@@ -70,8 +70,8 @@ teams.head()
 
 game_data['spread'] = game_data['home_score'] - game_data['guest_score']
 
-game_data = game_data.merge(teams, left_on='guest', right_on='name')                      .rename(index=str, columns={'index': 'guest_index'})                      .drop('name', axis=1)
-game_data = game_data.merge(teams, left_on='home', right_on='name')                      .rename(index=str, columns={'index': 'home_index'})                      .drop('name', axis=1)
+game_data = game_data.merge(teams, left_on='guest', right_on='name').rename(index=str, columns={'index': 'guest_index'})                      .drop('name', axis=1)
+game_data = game_data.merge(teams, left_on='home', right_on='name').rename(index=str, columns={'index': 'home_index'})                      .drop('name', axis=1)
 
 game_data.head()
 
