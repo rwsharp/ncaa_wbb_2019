@@ -44,12 +44,19 @@ def parse_cl():
 
     parser.add_argument('--data-path',   help='path where html versions of score data is located (sourced from https://stats.ncaa.org/season_divisions/16720/scoreboards')
     parser.add_argument('--output-path', help='path to write randomized brackets')
-    parser.add_argument('--n-trials', default=1, type=int,   help='number of trials to run')
-    parser.add_argument('--shots',               type=int,   help='max number of luck shots, e.g., 3')
-    parser.add_argument('--pm',       nargs='+', type=int,   help='miss / max portions, e.g., (3, 2)')
-    parser.add_argument('--points',   nargs='+', type=int,   help='free throw/two-pts/three-pts portions, e.g., (1, 5, 2)')
-    parser.add_argument('--reverse-miss-pct',    type=float, help='pct of missed shots that go in')
-    parser.add_argument('--reverse-make-pct',    type=float, help='pct of made shots that go out')
+    parser.add_argument('--n-trials', default=1,  type=int,   help='number of trials to run')
+    parser.add_argument('--shots',                type=int,   help='max number of luck shots, e.g., 3')
+    parser.add_argument('--pm',       nargs='+',  type=int,   help='miss / max portions, e.g., (3, 2)')
+    parser.add_argument('--points',   nargs='+',  type=int,   help='free throw/two-pts/three-pts portions, e.g., (1, 5, 2)')
+    parser.add_argument('--reverse-miss-pct',     type=float, help='pct of missed shots that go in')
+    parser.add_argument('--reverse-make-pct',     type=float, help='pct of made shots that go out')
+    parser.add_argument('--reverse-miss-pct-2FG', type=float, help='pct of missed shots that go in')
+    parser.add_argument('--reverse-miss-pct-3FG', type=float, help='pct of missed shots that go in')
+    parser.add_argument('--reverse-miss-pct-FT',  type=float, help='pct of missed shots that go in')
+    parser.add_argument('--reverse-make-pct-2FG', type=float, help='pct of made shots that go out')
+    parser.add_argument('--reverse-make-pct-3FG', type=float, help='pct of made shots that go out')
+    parser.add_argument('--reverse-make-pct-FT',  type=float, help='pct of made shots that go out')
+
     args = parser.parse_args()
 
     return args
@@ -111,7 +118,50 @@ def luck2(game, reverse_miss_p, reverse_make_p):
     return delta_spread
 
 
-def gen_brackets(game_data, teams, n_trials, output_path, shots, pm, points, reverse_miss_pct, reverse_make_pct):
+def luck3(game, reverse_miss_p_2fg, reverse_miss_p_3fg, reverse_miss_p_ft,
+                reverse_make_p_2fg, reverse_make_p_3fg, reverse_make_p_ft):
+
+    for team in ['home', 'guest']:
+        miss_2fg = numpy.array([2] * int(game['{}_2FGA'.format(team)] - game['{}_2FG'.format(team)]))
+        miss_3fg = numpy.array([3] * int(game['{}_3FGA'.format(team)] - game['{}_3FG'.format(team)]))
+        miss_ft  = numpy.array([1] * int(game['{}_FTA'.format(team)] - game['{}_FT'.format(team)]))
+
+        make_2fg = numpy.array([2] * int(game['{}_2FG'.format(team)]))
+        make_3fg = numpy.array([3] * int(game['{}_3FG'.format(team)]))
+        make_ft  = numpy.array([1] * int(game['{}_FT'.format(team)]))
+
+        reverse_miss_2fg = numpy.array([numpy.random.choice((0, 1), p=(1.0 - reverse_miss_p_2fg, reverse_miss_p_2fg)) * si for i, si in enumerate(miss_2fg)])
+        reverse_miss_3fg = numpy.array([numpy.random.choice((0, 1), p=(1.0 - reverse_miss_p_3fg, reverse_miss_p_3fg)) * si for i, si in enumerate(miss_3fg)])
+        reverse_miss_ft  = numpy.array([numpy.random.choice((0, 1), p=(1.0 - reverse_miss_p_ft, reverse_miss_p_ft)) * si for i, si in enumerate(miss_ft)])
+
+        reverse_make_2fg = numpy.array([numpy.random.choice((0, 1), p=(1.0 - reverse_make_p_2fg, reverse_make_p_2fg)) * si for i, si in enumerate(make_2fg)])
+        reverse_make_3fg = numpy.array([numpy.random.choice((0, 1), p=(1.0 - reverse_make_p_3fg, reverse_make_p_3fg)) * si for i, si in enumerate(make_3fg)])
+        reverse_make_ft  = numpy.array([numpy.random.choice((0, 1), p=(1.0 - reverse_make_p_ft,  reverse_make_p_ft)) * si for i, si in enumerate(make_ft)])
+
+        make_total = sum(make_2fg) + sum(make_3fg) + sum(make_ft)
+        reverse_miss_total = sum(reverse_miss_2fg) + sum(reverse_miss_3fg) + sum(reverse_miss_ft)
+        reverse_make_total = sum(reverse_make_2fg) + sum(reverse_make_3fg) + sum(reverse_make_ft)
+
+        new_score = make_total + reverse_miss_total - reverse_make_total
+
+        if team == 'home':
+            new_home_score = new_score
+        else:
+            new_guest_score = new_score
+
+    new_spread = new_home_score - new_guest_score
+
+    delta_spread = new_spread - game['spread']
+
+    return delta_spread
+
+
+
+def gen_brackets(game_data, teams, n_trials, output_path, shots, pm, points,
+                 reverse_miss_pct, reverse_make_pct,
+                 reverse_miss_pct_2fg, reverse_make_pct_2fg,
+                 reverse_miss_pct_3fg, reverse_make_pct_3fg,
+                 reverse_miss_pct_ft, reverse_make_pct_ft):
 
     if not os.path.isdir(output_path):
         if os.path.exists(output_path):
@@ -146,7 +196,9 @@ def gen_brackets(game_data, teams, n_trials, output_path, shots, pm, points, rev
 
                 if not numpy.isnan(spread0):
                     # spread = spread0 + luck(shots, pm, points)
-                    spread = spread0 + luck2(row, reverse_miss_pct, reverse_make_pct)
+                    # spread = spread0 + luck2(row, reverse_miss_pct, reverse_make_pct)
+                    spread = spread0 + luck3(row, reverse_miss_pct_2fg, reverse_miss_pct_3fg, reverse_miss_pct_ft,
+                                                  reverse_make_pct_2fg, reverse_make_pct_3fg, reverse_make_pct_ft)
 
                     # Sometimes a gametime is posted before the score is known in the data
                     # This leads to an undefined spread
@@ -188,8 +240,12 @@ def gen_brackets(game_data, teams, n_trials, output_path, shots, pm, points, rev
         rank['LRMC_rank'] = rank['LRMC'].rank(ascending=False)
         rank = rank.merge(teams, left_on='team_index', right_on='index', how='left')
 
-        luck2_str = '_'.join(map(str, list((reverse_miss_pct, reverse_make_pct))))
-        output_file_name = os.path.join(output_path, 'bracket_{}.{}.csv'.format(luck2_str, trial))
+        # luck2_str = '_'.join(map(str, list((reverse_miss_pct, reverse_make_pct))))
+        # output_file_name = os.path.join(output_path, 'bracket_{}.{}.csv'.format(luck2_str, trial))
+        luck3_str = '_'.join(map(str, list((reverse_miss_pct_2fg, reverse_make_pct_2fg,
+                                            reverse_miss_pct_3fg, reverse_make_pct_3fg,
+                                            reverse_miss_pct_ft, reverse_make_pct_ft,))))
+        output_file_name = os.path.join(output_path, 'bracket_{}.{}.csv'.format(luck3_str, trial))
         rank.sort_values('LRMC_rank').to_csv(output_file_name, index=False)
 
         print('trial {} of {}'.format(trial, n_trials))
@@ -210,7 +266,10 @@ def main(args):
 
     gen_brackets(game_data, teams, args.n_trials, args.output_path,
                  (0, args.shots), args.pm, args.points,
-                 args.reverse_miss_pct, args.reverse_make_pct)
+                 args.reverse_miss_pct, args.reverse_make_pct,
+                 args.reverse_miss_pct_2FG, args.reverse_make_pct_2FG,
+                 args.reverse_miss_pct_3FG, args.reverse_make_pct_3FG,
+                 args.reverse_miss_pct_FT, args.reverse_make_pct_FT)
 
 if __name__ == '__main__':
     main(parse_cl())
